@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, lazy, FunctionComponent, Suspense } from 'react';
 
 import { SideBar } from './components/SideBar';
-import { Content } from './components/Content';
+import { ContentProps } from './components/Content';
 
-import { api } from './services/api';
+const Content = lazy<FunctionComponent<ContentProps>>(() => import('./components/Content'))
 
 import './styles/global.scss';
 
 import './styles/sidebar.scss';
 import './styles/content.scss';
+import { moviesService } from './services/movies';
+import { genresService } from './services/genres';
 
 interface GenreResponseProps {
   id: number;
@@ -29,44 +31,60 @@ interface MovieProps {
 
 export function App() {
   const [selectedGenreId, setSelectedGenreId] = useState(1);
-
   const [genres, setGenres] = useState<GenreResponseProps[]>([]);
-
   const [movies, setMovies] = useState<MovieProps[]>([]);
-  const [selectedGenre, setSelectedGenre] = useState<GenreResponseProps>({} as GenreResponseProps);
+
+  const selectedGenre = useMemo(() => {
+    return genres.find(genre => genre.id === selectedGenreId)
+  }, [genres, selectedGenreId])
+
+  const handleClickButton = useCallback((id: number) => {
+    setSelectedGenreId(id);
+  }, [])
+
+  const getGenres = useCallback(async () => {
+    try {
+      const response = await genresService.getGenres()
+      setGenres(response)
+    } catch (error) {
+      console.warn(error)
+    }
+  }, [])
+
+  const getMoviesByGenre = useCallback(async (genreId) => {
+    try {
+      const response = await moviesService.getMoviesByGenre(genreId)
+      setMovies(response)
+    } catch (error) {
+      console.warn(error)
+    }
+  }, [])
 
   useEffect(() => {
-    api.get<GenreResponseProps[]>('genres').then(response => {
-      setGenres(response.data);
-    });
+    getGenres()
   }, []);
 
   useEffect(() => {
-    api.get<MovieProps[]>(`movies/?Genre_id=${selectedGenreId}`).then(response => {
-      setMovies(response.data);
-    });
-
-    api.get<GenreResponseProps>(`genres/${selectedGenreId}`).then(response => {
-      setSelectedGenre(response.data);
-    })
+    getMoviesByGenre(selectedGenreId)
   }, [selectedGenreId]);
-
-  function handleClickButton(id: number) {
-    setSelectedGenreId(id);
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'row' }}>
-      <SideBar
-        genres={genres}
-        selectedGenreId={selectedGenreId}
-        buttonClickCallback={handleClickButton}
-      />
+    <SideBar
+      genres={genres}
+      selectedGenreId={selectedGenreId}
+      buttonClickCallback={handleClickButton}
+    />
 
+    <Suspense fallback={
+      <div>Carregando filmes...</div>
+    }>
       <Content
-        selectedGenre={selectedGenre}
-        movies={movies}
+          selectedGenre={selectedGenre!}
+          movies={movies}
       />
+    </Suspense>
+     
     </div>
   )
 }
